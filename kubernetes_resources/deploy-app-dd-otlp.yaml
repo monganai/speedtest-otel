@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: speed-flask-otlp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: speed-flask-otlp
+  template:
+    metadata:
+      annotations:
+        ad.datadoghq.com/speed-flask-otlp.checks: |
+          {
+            "http_check": {
+              "instances": [{"name":"speed-flask-otlp", "url":"http://%%host%%:5000/upload"}]
+            }
+          }      
+      labels:
+        app.kubernetes.io/name: speed-flask-otlp
+        tags.datadoghq.com/env: "dev"
+        tags.datadoghq.com/service: "speed-flask-otlp"
+        tags.datadoghq.com/version: "1"
+    spec:
+      containers:
+      - name: speed-flask-otlp
+        image: localhost:32000/speed-flask-otel:latest
+        imagePullPolicy: Always
+        ports:
+          - containerPort: 5000
+
+        env:
+        - name: OTEL_EXPORTER_OTLP_ENDPOINT
+          value: "http://datadog.default.svc.cluster.local:4317"
+        - name: OTEL_RESOURCE_ATTRIBUTES
+          value: "service.name=speed-flask-otlp"
+        - name: OTEL_LOG_LEVEL
+          value: "debug"
+
+
+      - name: redis
+        image: redis:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+          - containerPort: 6379
+
+
+ 

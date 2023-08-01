@@ -1,0 +1,109 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: speed-flask-otel-collector
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: speed-flask-otel-collector
+  template:
+    metadata:
+      annotations:
+        ad.datadoghq.com/speed-flask-otel-collector.checks: |
+          {
+            "http_check": {
+              "instances": [{"name":"speed-flask-otel-collector", "url":"http://%%host%%:5000/download"}]
+            }
+          }      
+      labels:
+        app.kubernetes.io/name: "speed-flask-otel-collector"
+        tags.datadoghq.com/env: "dev"
+        tags.datadoghq.com/service: "speed-flask-otel-collector"
+        tags.datadoghq.com/version: "1"
+    spec:
+      containers:
+
+      - name: speed-flask-otel-collector
+        image: localhost:32000/speed-flask-otel:latest
+        imagePullPolicy: Always
+        ports:
+          - containerPort: 5000
+
+        env:
+        - name: OTEL_RESOURCE_ATTRIBUTES
+          value: "service.name=speed-flask-otel-collector"
+        - name: OTEL_LOG_LEVEL
+          value: "debug"
+        - name: LOG_TO_FILE
+          value: 'true'
+
+      - name: redis
+        image: redis:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+          - containerPort: 6379
+
+
+      - name: agent
+        image: otel/opentelemetry-collector:0.18.0
+        args:
+        - --config=/conf/agent.yaml
+        volumeMounts:
+        - mountPath: /conf
+          name: dd-agent-config
+      volumes:
+      - configMap:
+          items:
+          - key: agent.yaml
+            path: agent.yaml
+          name: dd-agent-config
+        name: dd-agent-config
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: speed-flask-otel-collector-svc
+spec:
+  selector:
+    app: speed-flask-otel-collector
+  ports:
+    - name: http
+      protocol: TCP
+      port: 5000
+      nodePort: 30066
+  type: LoadBalancer
+
+---
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dd-agent-config
+data:
+  agent.yaml: |
+    receivers:
+      otlp:
+        protocols: 
+          grpc:
+    processors:
+    exporters:
+      otlp:
+        endpoint: "opentelemetrycollector.default.svc.cluster.local:4317"
+        insecure: true
+
+    service:
+      pipelines:
+        metrics:
+          receivers: [otlp]
+          processors: []
+          exporters: [otlp]
+        traces:
+          receivers: [otlp]
+          processors: []
+          exporters: [otlp]
+        logs:
+          receivers: [otlp]
+          processors: []
+          exporters: [otlp]
